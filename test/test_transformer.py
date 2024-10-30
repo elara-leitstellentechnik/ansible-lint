@@ -9,11 +9,13 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
+from unittest.mock import Mock
 
 import pytest
 
 import ansiblelint.__main__ as main
 from ansiblelint.app import App
+from ansiblelint.errors import MatchError
 from ansiblelint.file_utils import Lintable
 from ansiblelint.rules import TransformMixin
 
@@ -23,7 +25,6 @@ from ansiblelint.transformer import Transformer
 
 if TYPE_CHECKING:
     from ansiblelint.config import Options
-    from ansiblelint.errors import MatchError
     from ansiblelint.rules import RulesCollection
 
 
@@ -295,6 +296,48 @@ def test_effective_write_set(write_list: list[str], expected: set[str]) -> None:
     """Make sure effective_write_set handles all/none keywords correctly."""
     actual = Transformer.effective_write_set(write_list)
     assert actual == expected
+
+
+@pytest.mark.parametrize(
+    ("write_list", "write_exclude_list", "expected"),
+    (
+        (["all"], ["none"], {"all"}),
+        (["all"], ["all"], {"none"}),
+        (["none"], ["none"], {"none"}),
+        (["none"], ["all"], {"none"}),
+        (["rule-id"], ["none"], {"rule-id"}),
+        (["rule-id"], ["all"], {"none"}),
+    ),
+)
+def test_write_exclude_list(
+    write_list: list[str],
+    write_exclude_list: list[str],
+    expected: set[str],
+) -> None:
+    """Test item matching write_exclude_list are excluded correctly."""
+    matches: list[MatchError] = []
+    for rule_id in ["rule-id", "rule1", "rule-03"]:
+        rule = Mock()
+        rule.return_value.__class__ = TransformMixin.__class__
+        rule.return_value.id = rule_id
+        rule.return_value.shortdesc = rule_id
+        match = MatchError(rule=rule)
+        matches.append(match)
+
+    transformer = Mock()
+    transformer.write_set.return_value = Transformer.effective_write_set(write_list)
+    transformer.write_exclude_set.return_value = Transformer.effective_write_set(
+        write_exclude_list,
+    )
+
+    # noinspection PyTypeChecker
+    Transformer._do_transforms(transformer, Mock(), "", False, matches)  # noqa: SLF001
+
+    for match in matches:
+        if match.rule.id in expected or expected == set("all"):
+            match.rule.transform.assert_called()  # type: ignore
+        else:
+            match.rule.transform.assert_not_called()  # type: ignore
 
 
 def test_pruned_err_after_fix(monkeypatch: pytest.MonkeyPatch, tmpdir: Path) -> None:
