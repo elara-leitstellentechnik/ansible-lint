@@ -335,9 +335,9 @@ def test_write_exclude_list(
 
     for match in matches:
         if match.rule.id in expected or expected == set("all"):
-            match.rule.transform.assert_called()  # type: ignore
+            match.rule.transform.assert_called()  # type: ignore[attr-defined]
         else:
-            match.rule.transform.assert_not_called()  # type: ignore
+            match.rule.transform.assert_not_called()  # type: ignore[attr-defined]
 
 
 def test_pruned_err_after_fix(monkeypatch: pytest.MonkeyPatch, tmpdir: Path) -> None:
